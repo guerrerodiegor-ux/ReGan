@@ -134,6 +134,7 @@ td.num{font-family:var(--mono);text-align:right;}
   <section id="s-alta"></section>
   <section id="s-manga"></section>
   <section id="s-cria"></section>
+  <section id="s-carga"></section>
   <section id="s-tri"></section>
   <section id="s-entrada"></section>
   <section id="s-salida"></section>
@@ -158,14 +159,14 @@ var DENT = [['Diente de leche','Diente de leche'],['2 dientes','2 dientes'],['4 
 var TRATS = ['Vacuna aftosa','Vacuna brucelosis','Vacuna mancha y gangrena','Vacuna IBR/DVB','Antiparasitario endectocida','Antiparasitario inyectable','Antiparasitario pour-on','Antibiótico','Vitaminas y minerales','Otro'];
 var TERCIOS = [['Cabeza','Cabeza (preñez grande)'],['Cuerpo','Cuerpo (preñez media)'],['Cola','Cola (preñez chica)']];
 var MOTIVOS = ['Acción de depredador','Enfermedad infecciosa','Enfermedad metabólica','Complicación en el parto','Accidente','Causa desconocida','Sacrificio sanitario','Inanición','Otro'];
-var TITULOS = {cria:'Cría: reproducción y destete',inicio:'Registro Ganadero',alta:'Alta de animales (SIGSA)',manga:'Trabajo en manga',tri:'TRI — Movimiento',entrada:'Entrada (compra)',salida:'Salida (venta)',muertes:'Muertes',stock:'Stock y fichas',historial:'Historial',config:'Configuración y respaldo'};
+var TITULOS = {carga:'Equivalente vaca (EV)',cria:'Cría: reproducción y destete',inicio:'Registro Ganadero',alta:'Alta de animales (SIGSA)',manga:'Trabajo en manga',tri:'TRI — Movimiento',entrada:'Entrada (compra)',salida:'Salida (venta)',muertes:'Muertes',stock:'Stock y fichas',historial:'Historial',config:'Configuración y respaldo'};
 
 /* ================= BASE DE DATOS ================= */
 var DB;
 function nuevaDB(){
   return {v:1,cfg:{renspa:RENSPA_DEF,titular:'',estab:''},seq:1,anim:{},manga:[],entradas:[],ventas:[],muertes:[],
     altaLote:[],tri:[],jornada:[],jornadaFecha:'',dEnt:{items:[],fecha:'',vend:'',trans:''},dSal:{items:[],fecha:'',comp:'',dest:''},
-    lastBackup:null,tema:'oscuro',importados:[],servicios:[],partos:[],partoFecha:'',desteteFecha:''};
+    lastBackup:null,tema:'oscuro',importados:[],servicios:[],partos:[],partoFecha:'',desteteFecha:'',potreros:[]};
 }
 function cargar(){
   try{var s=localStorage.getItem(KEY);var d=s?JSON.parse(s):null;DB=nuevaDB();if(d){for(var k in d)DB[k]=d[k];}}
@@ -212,9 +213,9 @@ function tagSexo(s){return s==='M'?'<span class="tag-m">M</span>':s==='H'?'<span
 function nombreA(a){if(!a)return '?';if(a.idv)return a.idv;if(a.eid)return a.eid;var m=a.madre&&DB.anim[a.madre];return m?'cría de '+(m.idv||m.eid||'?'):'?';}
 
 /* ================= ANIMALES ================= */
-function animales(){return Object.keys(DB.anim).map(function(k){return DB.anim[k];});}
+function animales(){return Object.keys(DB.anim).map(function(k){return DB.anim[k];}).filter(function(a){return a.especie!=='equino';});}
 function enStock(){return animales().filter(function(a){return a.estado==='stock';});}
-function estadoTxt(a){return a.estado==='stock'?'En stock':a.estado==='vendido'?'Vendido':a.estado==='muerto'?'Muerto':a.estado;}
+function estadoTxt(a){return a.estado==='stock'?'En stock':a.estado==='vendido'?'Vendido':a.estado==='muerto'?'Muerto':a.estado==='baja'?'Baja':a.estado;}
 // Busca por EID; si no hay EID, por IDV. Devuelve animal, null o 'ambiguo'.
 function buscar(eid,idv,soloStock){
   eid=normEID(eid);idv=normIDV(idv);
@@ -233,7 +234,7 @@ function buscar(eid,idv,soloStock){
   }
   return null;
 }
-function existeEID(eid,exceptoId){eid=normEID(eid);if(!eid)return null;return animales().find(function(a){return a.eid===eid&&a.id!==exceptoId;})||null;}
+function existeEID(eid,exceptoId){eid=normEID(eid);if(!eid)return null;return Object.keys(DB.anim).map(function(k){return DB.anim[k];}).find(function(a){return a.eid===eid&&a.id!==exceptoId;})||null;}
 function crearAnimal(d){
   var a={id:nuevoId('A'),eid:normEID(d.eid),idv:d.idv||idvDeEID(d.eid),sexo:d.sexo||'',cat:d.cat||'',raza:d.raza||'',fnac:d.fnac||'',
     dent:d.dent||'',corral:d.corral||'',obs:d.obs||'',origen:d.origen||'',vendedor:d.vendedor||'',
@@ -363,7 +364,7 @@ function ir(p){
   $('h-tit').textContent=TITULOS[p];
   $('h-sub').innerHTML=esc(DB.cfg.estab||DB.cfg.titular||'Mi establecimiento')+' · RENSPA <b>'+esc(DB.cfg.renspa)+'</b>';
   window.scrollTo(0,0);
-  ({cria:rCria,inicio:rInicio,alta:rAlta,manga:rManga,tri:rTri,entrada:rEntrada,salida:rSalida,muertes:rMuertes,stock:rStock,historial:rHistorial,config:rConfig})[p]();
+  ({carga:rCarga,cria:rCria,inicio:rInicio,alta:rAlta,manga:rManga,tri:rTri,entrada:rEntrada,salida:rSalida,muertes:rMuertes,stock:rStock,historial:rHistorial,config:rConfig})[p]();
 }
 function foco(id){setTimeout(function(){var e=$(id);if(e)e.focus();},80);}
 
@@ -384,13 +385,13 @@ function rInicio(){
   if(DB.dEnt.items.length)pend+='<div class="aviso info">Hay una <b>entrada</b> sin finalizar ('+DB.dEnt.items.length+' animales). <a href="#" onclick="ir(\'entrada\');return false" style="color:var(--accent)">Continuar</a></div>';
   if(DB.dSal.items.length)pend+='<div class="aviso info">Hay una <b>salida</b> sin finalizar ('+DB.dSal.items.length+' animales). <a href="#" onclick="ir(\'salida\');return false" style="color:var(--accent)">Continuar</a></div>';
   var mods=[['manga','&#x1F527;','Manga','Pesadas, CC, tacto, sanidad'],['cria','&#x1F42E;','Cría','Parición, destete, índices, descarte'],['alta','&#x1F3F7;&#xFE0F;','Alta SIGSA','Caravanas nuevas para SENASA'],
-    ['tri','&#x1F4CB;','TRI','Lista para movimiento / DT-e'],['stock','&#x1F4CA;','Stock','Fichas e historial por animal'],
+    ['tri','&#x1F4CB;','TRI','Lista para movimiento / DT-e'],['stock','&#x1F4CA;','Stock','Fichas e historial por animal'],['carga','&#x2696;&#xFE0F;','EV','Equivalencias del stock'],
     ['entrada','&#x1F4E5;','Entrada','Compra de hacienda'],['salida','&#x1F4E4;','Salida','Venta y GDP'],
     ['muertes','&#x1F480;','Muertes','Bajas del stock'],['historial','&#x1F4D6;','Historial','Compras y ventas'],
     ['config','&#x2699;&#xFE0F;','Configuración','Datos y respaldo']];
   $('s-inicio').innerHTML='<div class="home-hola"><h2>'+sal+(DB.cfg.titular?', '+esc(DB.cfg.titular.split(' ')[0]):'')+'</h2><p>'+esc(new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'}))+'</p></div>'+
     aviso+pend+
-    '<div class="kpis"><div class="kpi"><div class="v">'+S.length+'</div><div class="l">En stock</div></div><div class="kpi h"><div class="v">'+h+'</div><div class="l">Hembras</div></div><div class="kpi m"><div class="v">'+m+'</div><div class="l">Machos</div></div></div>'+
+    '<div class="kpis"><div class="kpi"><div class="v">'+S.length+'</div><div class="l">En stock</div></div><div class="kpi h"><div class="v">'+h+'</div><div class="l">Hembras</div></div><div class="kpi m"><div class="v">'+m+'</div><div class="l">Machos</div></div>'+(function(){var R=evResumen();return '<div class="kpi" style="cursor:pointer" onclick="ir(\'carga\')"><div class="v">'+fmt(R.ev,1)+'</div><div class="l">EV totales</div></div>'+(R.E.length?'<div class="kpi" style="cursor:pointer" onclick="irStock(\'\',\'equ\')"><div class="v">'+R.E.length+'</div><div class="l">Equinos</div></div>':'');})()+'</div>'+
     (chips?'<div class="chips">'+chips+'</div>':'')+
     '<div class="modgrid">'+mods.map(function(x){return '<button class="mod" onclick="'+(x[0]==='stock'?'irStock()':'ir(\''+x[0]+'\')')+'"><span class="i">'+x[1]+'</span><span class="t">'+x[2]+'</span><span class="d">'+x[3]+'</span></button>';}).join('')+'</div>'+
     '<div class="foot">Registro Ganadero · producto elaborado por Matías Maliverney (Naschel, San Luis) para uso exclusivo de WITRU<br>Los datos se guardan en este dispositivo</div>';
@@ -509,6 +510,7 @@ function mangaRegistrar(){
     if(eid&&!a.eid)a.eid=eid;if(idv&&!a.idv)a.idv=idv;
     a.sexo=d.sexo;if(d.raza)a.raza=d.raza;if(d.fnac)a.fnac=d.fnac;if(d.cat)a.cat=d.cat;if(m.dent)a.dent=m.dent;
   } else {
+    var exq=existeEID(eid);if(exq){toast(exq.especie==='equino'?'Ese chip es de un equino cargado en Stock':'Ese EID ya existe',1);return;}
     a=crearAnimal({eid:eid,idv:idv,sexo:d.sexo,raza:d.raza,fnac:d.fnac,cat:d.cat,dent:m.dent,origen:'Manga',fechaIng:fecha});
   }
   var r={id:nuevoId('M'),aid:a.id,fecha:fecha,hora:ahoraHM(),cat:d.cat,dent:m.dent,trat:m.trat,cc:m.cc,pre:m.pre,peso:m.peso,obs:m.obs};
@@ -660,6 +662,7 @@ function addEntrada(){
   var a=buscar(eid,idv,false),reuse='';
   if(a==='ambiguo'){toast('IDV repetido: escaneá el EID',1);return;}
   if(a&&a.estado==='stock'){toast('Ya está en el stock',1);return;}
+  if(!a&&eid){var exq=existeEID(eid);if(exq){toast(exq.especie==='equino'?'Ese chip es de un equino cargado en Stock':'Ese EID ya existe',1);return;}}
   if(a){if(!confirm(nombreA(a)+' figura como '+estadoTxt(a).toLowerCase()+'. ¿Reingresa al campo?'))return;reuse=a.id;}
   DB.dEnt.items.push({eid:eid,idv:idv||idvDeEID(eid),sexo:d.sexo,cat:d.cat,raza:d.raza,fnac:d.fnac,peso:peso,corral:$('en-corral').value.trim(),reuse:reuse});
   guardar();
@@ -799,11 +802,13 @@ function expMuertes(){
 }
 
 /* ================= STOCK Y FICHAS ================= */
-var STF={q:'',sexo:'',cat:'',estado:'stock'};
-function irStock(cat){STF={q:'',sexo:'',cat:cat||'',estado:'stock'};ir('stock');}
+var STF={q:'',sexo:'',cat:'',estado:'stock',esp:'bov'};
+function irStock(cat,esp){STF={q:'',sexo:'',cat:cat||'',estado:'stock',esp:esp||'bov'};ir('stock');}
 function ultReg(aid,campo){var r=null;DB.manga.forEach(function(x){if(x.aid===aid&&(!campo||(x[campo]!==''&&x[campo]!=null))&&(!r||x.fecha>=r.fecha))r=x;});return r;}
 function rStock(){
-  $('s-stock').innerHTML='<div class="kpis" id="st-kpis"></div><div class="chips" id="st-chips"></div>'+
+  var tabs='<div class="tabs"><button class="tab'+(STF.esp!=='equ'?' on':'')+'" onclick="STF.esp=\'bov\';rStock()">Bovinos ('+enStock().length+')</button><button class="tab'+(STF.esp==='equ'?' on':'')+'" onclick="STF.esp=\'equ\';rStock()">Equinos ('+equinosStock().length+')</button></div>';
+  if(STF.esp==='equ'){$('s-stock').innerHTML=tabs+'<div id="st-eq"></div>';rEquinos($('st-eq'));return;}
+  $('s-stock').innerHTML=tabs+'<div class="kpis" id="st-kpis"></div><div class="chips" id="st-chips"></div>'+
     '<div class="card" style="padding:10px 12px"><div class="grid3">'+
     '<div class="field" style="margin:0"><label>Buscar</label><input id="st-q" placeholder="EID o IDV" value="'+esc(STF.q)+'" oninput="STF.q=this.value;tbStock()"></div>'+
     '<div class="field" style="margin:0"><label>Sexo</label><select onchange="STF.sexo=this.value;tbStock()">'+opts([['H','Hembras'],['M','Machos']],STF.sexo,'Todos')+'</select></div>'+
@@ -857,7 +862,8 @@ function ficha(id){
   ev.sort(function(x,y){return x.f<y.f?-1:x.f>y.f?1:0;});
   modal('<h3>Ficha — '+esc(nombreA(a))+' <span class="badge" style="margin-left:6px">'+estadoTxt(a)+'</span></h3>'+
     idHTML('fi',a.eid,a.idv)+camposAnimal('fi',a)+
-    '<div class="grid2"><div class="field"><label>Dentición</label><select id="fi-dent">'+opts(DENT,a.dent,'-- Sin registrar --')+'</select></div><div class="field"><label>Corral / lote</label><input id="fi-corral" value="'+esc(a.corral)+'"></div></div>'+
+    '<div class="grid2"><div class="field"><label>Dentición</label><select id="fi-dent">'+opts(DENT,a.dent,'-- Sin registrar --')+'</select></div><div class="field"><label>Potrero / lote</label><input id="fi-corral" list="dl-potreros" value="'+esc(a.corral)+'"></div></div>'+
+    '<datalist id="dl-potreros">'+potreros().map(function(p){return '<option value="'+esc(p.nombre)+'">';}).join('')+'</datalist>'+
     '<div class="field"><label>Observaciones</label><input id="fi-obs" value="'+esc(a.obs)+'"></div>'+
     '<div class="btns" style="margin-bottom:14px"><button class="btn ok" onclick="guardarFicha(\''+id+'\')">Guardar</button><button class="btn sec" onclick="cerrarModal()">Cerrar</button></div>'+
     fichaCria(a)+'<h3 style="margin-top:4px">Historial</h3><div class="tw"><table><thead><tr><th>Fecha</th><th>Evento</th><th>Peso</th><th>GDP</th><th>CC</th><th>Preñez</th><th>Trat.</th><th></th></tr></thead><tbody>'+
@@ -1422,6 +1428,127 @@ function pwaAvisos(){
     else if(esIOS())h+='<div class="aviso info">Para instalarla en iPhone: tocá <b>Compartir</b> &#x2B06;&#xFE0F; y después <b>Agregar a inicio</b>.</div>';
   }
   return h;
+}
+
+/* ================= EQUIVALENTE VACA (EV) Y EQUINOS ================= */
+// 1 EV = requerimiento anual de una vaca de 400 kg que gesta y cría un ternero hasta el destete
+// (6 meses, ~160 kg), incluido el forraje del ternero (Cocimano et al., INTA Balcarce, 1975).
+var EQ_CATS = ['Yegua','Padrillo','Caballo castrado','Potrillo/a'];
+var EV_ORDEN = ['Vaca','Vaca CUT','Vaquillona R2','Vaquillona R1','Ternera','Ternero','Ternera al pie','Ternero al pie','Torito','Novillito','Novillo','Toro','Sin categoría'].concat(EQ_CATS);
+var EV_DEF = {'Vaca':1.0,'Vaca CUT':0.8,'Vaquillona R2':0.8,'Vaquillona R1':0.6,'Ternera':0.5,'Ternero':0.5,'Ternera al pie':0,'Ternero al pie':0,'Torito':0.9,'Novillito':0.7,'Novillo':0.9,'Toro':1.3,'Sin categoría':0.8,
+  'Yegua':1.2,'Padrillo':1.2,'Caballo castrado':1.2,'Potrillo/a':0.6};
+var EV_NOTA = {'Ternera':'destetada','Ternero':'destetado','Ternera al pie':'incluida en la madre','Ternero al pie':'incluido en la madre'};
+
+function potreros(){return DB.potreros||(DB.potreros=[]);}
+function evTabla(){var t={};for(var k in EV_DEF)t[k]=EV_DEF[k];var u=DB.cfg.ev||{};for(var k2 in u)if(u[k2]!==''&&u[k2]!=null)t[k2]=+u[k2];return t;}
+function evCat(a){
+  if(a.especie==='equino')return EQ_CATS.indexOf(a.cat)>=0?a.cat:'Caballo castrado';
+  var c=a.cat||'Sin categoría';
+  if((c==='Ternero'||c==='Ternera')&&a.madre&&!a.destete){var m=DB.anim[a.madre];if(m&&m.estado==='stock')return c+' al pie';}
+  return EV_DEF[c]!=null?c:'Sin categoría';
+}
+function evDe(a){return evTabla()[evCat(a)];}
+function equinos(){return Object.keys(DB.anim).map(function(k){return DB.anim[k];}).filter(function(a){return a.especie==='equino';});}
+function equinosStock(){return equinos().filter(function(a){return a.estado==='stock';});}
+function evResumen(){
+  var B=enStock(),E=equinosStock(),porCat={},tot=0,totB=0,totE=0;
+  B.concat(E).forEach(function(a){var k=evCat(a),e=evDe(a);if(!porCat[k])porCat[k]={n:0,ev:0};porCat[k].n++;porCat[k].ev+=e;tot+=e;if(a.especie==='equino')totE+=e;else totB+=e;});
+  return {B:B,E:E,porCat:porCat,ev:tot,evB:totB,evE:totE};
+}
+function chipExiste(eid,exceptoId){eid=normEID(eid);if(!eid)return null;var L=Object.keys(DB.anim).map(function(k){return DB.anim[k];});return L.find(function(a){return a.eid===eid&&a.id!==exceptoId;})||null;}
+
+/* ---------- Pantalla EV ---------- */
+function rCarga(){
+  var R=evResumen(),t=evTabla();
+  var fila=function(c){var x=R.porCat[c]||{n:0,ev:0};
+    return '<tr'+(x.n?'':' style="opacity:.5"')+'><td><b>'+esc(c)+'</b>'+(EV_NOTA[c]?'<br><span class="muted">'+EV_NOTA[c]+'</span>':'')+'</td><td class="num">'+x.n+'</td>'+
+      '<td><input inputmode="decimal" value="'+fmt(t[c],2)+'" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--input);color:var(--text);font-family:var(--mono);text-align:right" onchange="setEV(\''+esc(c)+'\',this.value)"></td>'+
+      '<td class="num">'+fmt(x.ev,1)+'</td></tr>';};
+  var bov=EV_ORDEN.filter(function(c){return EQ_CATS.indexOf(c)<0;}),con=function(L){return L.filter(function(c){return R.porCat[c];}).concat(L.filter(function(c){return !R.porCat[c];}));};
+  $('s-carga').innerHTML=
+    '<div class="kpis"><div class="kpi"><div class="v">'+fmt(R.ev,1)+'</div><div class="l">EV totales</div></div>'+
+    '<div class="kpi"><div class="v">'+fmt(R.evB,1)+'</div><div class="l">EV bovinos ('+R.B.length+' cab.)</div></div>'+
+    '<div class="kpi"><div class="v">'+fmt(R.evE,1)+'</div><div class="l">EV equinos ('+R.E.length+' cab.)</div></div></div>'+
+    '<div class="th"><h2>Bovinos</h2><button class="mini" onclick="if(confirm(\'Volver a los coeficientes por defecto?\')){DB.cfg.ev={};guardar();rCarga();}">Valores por defecto</button></div>'+
+    '<div class="tw"><table><thead><tr><th>Categoría</th><th style="text-align:right">Cabezas</th><th>EV / cabeza</th><th style="text-align:right">EV</th></tr></thead><tbody>'+
+    con(bov).map(fila).join('')+'<tr style="font-weight:800"><td>Subtotal bovinos</td><td class="num">'+R.B.length+'</td><td></td><td class="num">'+fmt(R.evB,1)+'</td></tr></tbody></table></div>'+
+    '<div class="th"><h2>Equinos</h2><button class="mini" onclick="irStock(\'\',\'equ\')">Ver equinos</button></div>'+
+    '<div class="tw"><table><thead><tr><th>Categoría</th><th style="text-align:right">Cabezas</th><th>EV / cabeza</th><th style="text-align:right">EV</th></tr></thead><tbody>'+
+    con(EQ_CATS).map(fila).join('')+'<tr style="font-weight:800"><td>Subtotal equinos</td><td class="num">'+R.E.length+'</td><td></td><td class="num">'+fmt(R.evE,1)+'</td></tr></tbody></table></div>'+
+    '<div class="tw"><table><tbody><tr style="font-weight:900;font-size:15px"><td>TOTAL</td><td class="num">'+(R.B.length+R.E.length)+' cabezas</td><td class="num">'+fmt(R.ev,1)+' EV</td></tr></tbody></table></div>'+
+    '<p class="muted" style="margin-bottom:12px">1 EV = requerimiento anual de una vaca de 400 kg que gesta y cría su ternero hasta el destete (6 meses, ~160 kg), incluido lo que come el ternero (Cocimano et al., INTA Balcarce). Los coeficientes son orientativos: tocá un valor para ajustarlo y queda guardado.</p>'+
+    '<div class="btns"><button class="btn ok" onclick="expEV()">Exportar Excel</button></div>';
+}
+function setEV(c,v){var n=num(v);if(n===''||n<0||n>3){toast('Valor de EV no válido',1);rCarga();return;}DB.cfg.ev=DB.cfg.ev||{};DB.cfg.ev[c]=n;guardar();rCarga();}
+function expEV(){
+  var R=evResumen(),t=evTabla();
+  var aoa=cabecera('EQUIVALENTE VACA (EV) DEL STOCK',R.B.length+R.E.length).concat([['Categoría','Especie','Cabezas','EV/cabeza','EV total']]);
+  EV_ORDEN.forEach(function(c){var x=R.porCat[c];if(x)aoa.push([c,EQ_CATS.indexOf(c)>=0?'Equino':'Bovino',x.n,t[c],+x.ev.toFixed(2)]);});
+  aoa.push(['Subtotal bovinos','',R.B.length,'',+R.evB.toFixed(2)],['Subtotal equinos','',R.E.length,'',+R.evE.toFixed(2)],['TOTAL','',R.B.length+R.E.length,'',+R.ev.toFixed(2)],[],
+    ['1 EV = vaca de 400 kg que gesta y cría su ternero hasta el destete (Cocimano et al., INTA Balcarce). Coeficientes orientativos.'],[],['Detalle por animal'],['Especie','IDV / Nombre','EID / Chip','Categoría EV','EV']);
+  R.B.concat(R.E).forEach(function(a){aoa.push([a.especie==='equino'?'Equino':'Bovino',a.especie==='equino'?(a.nombre||'Sin identificar'):(a.idv||''),a.eid||'',evCat(a),evDe(a)]);});
+  xlsx(nombreArch('EV','xlsx'),'EV',aoa,[26,12,18,16,10]);toast('Excel exportado');
+}
+
+/* ---------- Equinos en el stock ---------- */
+var EQF={baja:false};
+function nombreEq(a){return a.nombre||(a.eid?'Chip '+a.eid.slice(-6):'Sin identificar');}
+function rEquinos(cont){
+  var L=equinos().filter(function(a){return EQF.baja?a.estado!=='stock':a.estado==='stock';}).sort(function(x,y){return (x.nombre?0:1)-(y.nombre?0:1)||String(x.nombre||'').localeCompare(String(y.nombre||''))||(x.eid?0:1)-(y.eid?0:1);});
+  var S=equinosStock(),cc={};S.forEach(function(a){cc[a.cat]=(cc[a.cat]||0)+1;});
+  cont.innerHTML='<div class="kpis"><div class="kpi"><div class="v">'+S.length+'</div><div class="l">Equinos en stock</div></div>'+
+    EQ_CATS.filter(function(c){return cc[c];}).map(function(c){return '<div class="kpi"><div class="v">'+cc[c]+'</div><div class="l">'+esc(c)+'</div></div>';}).join('')+
+    '<div class="kpi"><div class="v">'+fmt(S.reduce(function(s,a){return s+evDe(a);},0),1)+'</div><div class="l">EV</div></div></div>'+
+    '<div class="btns" style="margin-bottom:12px"><button class="btn" onclick="fichaEq()">+ Agregar equino</button><button class="btn sec" onclick="EQF.baja=!EQF.baja;rStock()">'+(EQF.baja?'Ver en stock':'Ver bajas')+'</button></div>'+
+    '<div class="tw"><table><thead><tr><th>Nombre</th><th>Chip</th><th>Categoría</th><th>S</th><th>Pelaje</th><th>Edad</th><th style="text-align:right">EV</th>'+(EQF.baja?'<th>Baja</th>':'')+'</tr></thead><tbody>'+
+    (L.length?L.map(function(a){return '<tr class="click" onclick="fichaEq(\''+a.id+'\')"><td class="idv">'+esc(nombreEq(a))+'</td><td class="eid">'+esc(a.eid||'sin chip')+'</td><td>'+esc(a.cat||'-')+'</td><td>'+tagSexo(a.sexo)+'</td><td>'+esc(a.pelaje||'-')+'</td><td>'+(edadTxt(a.fnac)||'-')+'</td><td class="num">'+fmt(evDe(a),2)+'</td>'+
+      (EQF.baja?'<td>'+esc(estadoTxt(a))+' '+isoAR(a.fechaBaja)+'</td>':'')+'</tr>';}).join('')
+      :'<tr><td colspan="8"><div class="es">'+(EQF.baja?'No hay equinos dados de baja.':'Todavía no cargaste equinos. Se pueden cargar con chip o sin chip.')+'</div></td></tr>')+'</tbody></table></div>'+
+    '<div class="btns"><button class="btn ok" onclick="expEquinos()">Exportar Excel</button></div>';
+}
+function fichaEq(id){
+  var a=id?DB.anim[id]:{cat:'Caballo castrado',sexo:'M'},nuevo=!id;
+  modal('<h3>'+(nuevo?'Nuevo equino':'Equino — '+esc(nombreEq(a)))+(a.estado&&a.estado!=='stock'?' <span class="badge">'+esc(estadoTxt(a))+'</span>':'')+'</h3>'+
+    '<div class="grid2"><div class="field"><label>Nombre</label><input id="eq-nom" value="'+esc(a.nombre||'')+'" placeholder="Opcional"></div>'+
+    '<div class="field"><label>Chip / microchip</label><input id="eq-chip" class="eid" value="'+esc(a.eid||'')+'" placeholder="Opcional: escaneá" autocomplete="off"></div></div>'+
+    '<div class="grid2"><div class="field"><label>Categoría</label><select id="eq-cat" onchange="var s=this.value;if(s===\'Yegua\')$(\'eq-sexo\').value=\'H\';else if(s!==\'Potrillo/a\')$(\'eq-sexo\').value=\'M\';">'+opts(EQ_CATS,a.cat)+'</select></div>'+
+    '<div class="field"><label>Sexo</label><select id="eq-sexo">'+opts([['M','Macho'],['H','Hembra']],a.sexo||'M')+'</select></div></div>'+
+    '<div class="grid2"><div class="field"><label>Pelaje</label><input id="eq-pel" value="'+esc(a.pelaje||'')+'" placeholder="Ej: zaino, tostado"></div>'+
+    '<div class="field"><label>Uso / observaciones</label><input id="eq-obs" value="'+esc(a.obs||'')+'" placeholder="Ej: trabajo, reproductora"></div></div>'+
+    '<div class="field"><label>Fecha de nacimiento (aprox.)</label>'+fnacHTML('eq-fn',a.fnac)+'</div>'+
+    (nuevo?'<div class="field"><label>Cantidad (para cargar varios sin nombre ni chip)</label><input id="eq-n" inputmode="numeric" value="1" style="width:100px"></div>':'')+
+    '<div class="btns"><button class="btn ok" onclick="guardarEq('+(id?'\''+id+'\'':'')+')">Guardar</button>'+
+    (!nuevo&&a.estado==='stock'?'<button class="btn danger" onclick="bajaEq(\''+id+'\')">Dar de baja</button>':'')+
+    (!nuevo&&a.estado!=='stock'?'<button class="btn sec" onclick="DB.anim[\''+id+'\'].estado=\'stock\';DB.anim[\''+id+'\'].fechaBaja=\'\';guardar();cerrarModal();rStock();toast(\'Vuelve al stock\')">Volver al stock</button>':'')+
+    '<button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>'+
+    (!nuevo?'<button class="btn sec full" style="margin-top:10px;color:var(--danger)" onclick="if(confirm(\'Eliminar este equino (carga errónea)?\')){delete DB.anim[\''+id+'\'];guardar();cerrarModal();rStock();}">Eliminar (carga errónea)</button>':''));
+  if(nuevo)foco('eq-nom');
+}
+function guardarEq(id){
+  var chip=normEID($('eq-chip').value),f=leerFnac('eq-fn');
+  if(!f.ok){toast('Fecha de nacimiento inválida o futura',1);return;}
+  if(chip){var ex=chipExiste(chip,id);if(ex){toast('Ese chip ya está cargado',1);return;}}
+  var d={especie:'equino',nombre:$('eq-nom').value.trim(),eid:chip,idv:'',cat:$('eq-cat').value,sexo:$('eq-sexo').value,pelaje:$('eq-pel').value.trim(),obs:$('eq-obs').value.trim(),fnac:f.val};
+  if(id){Object.assign(DB.anim[id],d);}
+  else{
+    var n=parseInt(($('eq-n')||{}).value,10)||1;if(n<1||n>200){toast('Cantidad no válida',1);return;}
+    if(n>1&&(d.nombre||chip)){toast('Para cargar varios a la vez, dejá vacíos nombre y chip',1);return;}
+    for(var i=0;i<n;i++){var a=crearAnimal({origen:'Alta equino'});Object.assign(a,d);}
+  }
+  guardar();cerrarModal();rStock();toast(id?'Equino actualizado':'Equino agregado al stock');
+}
+function bajaEq(id){
+  var a=DB.anim[id];
+  modal('<h3>Dar de baja — '+esc(nombreEq(a))+'</h3><div class="grid2"><div class="field"><label>Motivo</label><select id="bq-m">'+opts([['vendido','Venta'],['muerto','Muerte'],['baja','Otro']],'vendido')+'</select></div>'+
+    '<div class="field"><label>Fecha</label><input type="date" id="bq-f" value="'+hoyISO()+'" max="'+hoyISO()+'"></div></div>'+
+    '<div class="field"><label>Detalle</label><input id="bq-o" placeholder="Opcional"></div>'+
+    '<div class="btns"><button class="btn danger" onclick="var a=DB.anim[\''+id+'\'];a.estado=$(\'bq-m\').value;a.fechaBaja=$(\'bq-f\').value||hoyISO();a.motivoBaja=$(\'bq-o\').value.trim();guardar();cerrarModal();rStock();toast(\'Baja registrada\')">Confirmar baja</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>');
+}
+function expEquinos(){
+  var L=equinos();if(!L.length){toast('No hay equinos',1);return;}
+  var aoa=cabecera('EQUINOS',equinosStock().length).concat([['Nombre','Chip','Categoría','Sexo','Pelaje','F. nac.','Edad','EV','Estado','Fecha baja','Observaciones']]);
+  L.forEach(function(a){aoa.push([a.nombre||'',a.eid||'',a.cat||'',a.sexo||'',a.pelaje||'',a.fnac||'',edadTxt(a.fnac),evDe(a),estadoTxt(a)==='baja'?'Baja':estadoTxt(a),isoAR(a.fechaBaja),[a.obs,a.motivoBaja].filter(Boolean).join(' · ')]);});
+  xlsx(nombreArch('equinos','xlsx'),'Equinos',aoa,[16,18,16,6,12,11,7,6,10,11,28]);toast('Excel exportado');
 }
 
 /* ================= TEMA E INICIO ================= */
