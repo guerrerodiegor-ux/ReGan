@@ -375,7 +375,8 @@ function rInicio(){
   var cats={};S.forEach(function(a){var c=a.cat||'Sin categoría';cats[c]=(cats[c]||0)+1;});
   var orden=CATS.H.concat(CATS.M).concat(['Sin categoría']);
   var chips=orden.filter(function(c){return cats[c];}).map(function(c){return '<span class="chip" onclick="irStock(\''+esc(c)+'\')">'+esc(c)+'<b>'+cats[c]+'</b></span>';}).join('');
-  var aviso=(typeof pwaAvisos==='function'?pwaAvisos():'');
+  var aviso=(typeof pwaAvisos==='function'?pwaAvisos():'')+avisoHuerfanos();
+  var nsug=sugerenciasCat().length;if(nsug)aviso+='<div class="aviso info">Hay <b>'+nsug+'</b> animales con la categoría para actualizar (destetes, edad o partos). <a href="#" onclick="asistenteCat();return false" style="color:var(--accent);font-weight:700">Revisar</a></div>';
   if(!DB.cfg.titular||!DB.cfg.estab)aviso+='<div class="aviso info">Completá el nombre del establecimiento y el titular en <a href="#" onclick="ir(\'config\');return false" style="color:var(--accent)">Configuración</a>. Salen en todos los Excel.</div>';
   if(animales().length){
     var dd=DB.lastBackup?dias(DB.lastBackup,hoyISO()):null;
@@ -400,11 +401,12 @@ function rInicio(){
 /* ================= ALTA ================= */
 function rAlta(){
   $('s-alta').innerHTML='<div class="card">'+idHTML('al','','',' onkeydown="if(event.key===\'Enter\'){event.preventDefault();$(\'al-idv\').focus()}"')+
-    camposAnimal('al',{})+'<button class="btn full" onclick="addAlta()">+ Agregar al lote</button></div>'+
+    camposAnimal('al',{})+'<button class="btn full" onclick="addAlta()">+ Agregar al lote y al stock</button></div>'+
+    (enStock().some(function(a){return !a.eid;})?'<div class="aviso info">Hay <b>'+enStock().filter(function(a){return !a.eid;}).length+'</b> animales en stock sin caravana (por ejemplo, terneros de Parición). <a href="#" onclick="elegirAlta();return false" style="color:var(--accent);font-weight:700">Ponerles caravana</a></div>':'')+
     '<div class="th"><h2>Lote de alta (<span id="al-n">0</span>)</h2><button class="mini" onclick="cerrarLoteAlta()">Cerrar lote</button></div>'+
     '<div class="tw"><table><thead><tr><th>#</th><th>EID</th><th>IDV</th><th>Sexo</th><th>Raza</th><th>F. nac.</th><th>Cat.</th><th></th></tr></thead><tbody id="al-tb"></tbody></table></div>'+
     '<div class="btns"><button class="btn ok" id="al-x" onclick="expAlta()">Exportar Excel SIGSA</button><button class="btn sec" id="al-c" onclick="expAltaCSV()">CSV</button></div>'+
-    '<p class="muted" style="margin-top:10px">Cada animal del lote queda también en el stock. "Cerrar lote" vacía esta lista (los animales siguen en stock).</p>';
+    '<p class="muted" style="margin-top:10px">Cada animal que agregás acá queda también en el <a href="#" onclick="irStock();return false" style="color:var(--accent)">stock</a>. "Cerrar lote" vacía esta lista, pero los animales siguen en stock.</p>';
   tbAlta();foco('al-eid');
 }
 function addAlta(){
@@ -419,7 +421,7 @@ function addAlta(){
   DB.altaLote.push(a.id);guardar();
   var keep={sexo:d.sexo,raza:d.raza,fnac:d.fnac};
   rAlta();setSexo('al',keep.sexo);$('al-raza').value=keep.raza;
-  toast('Agregado: '+nombreA(a));
+  toast(nombreA(a)+' agregado al lote y al stock');
 }
 function tbAlta(){
   var L=DB.altaLote.map(function(id){return DB.anim[id];}).filter(Boolean);
@@ -585,6 +587,7 @@ function rTri(){
     '<div class="th"><h2>Animales para el movimiento</h2><button class="mini" onclick="limpiarTri()">Limpiar lista</button></div>'+
     '<div class="tw"><table><thead><tr><th>#</th><th>EID</th><th>IDV</th><th>Sexo</th><th>Cat.</th><th>Raza</th><th>F. nac.</th><th></th></tr></thead><tbody id="tr-tb"></tbody></table></div>'+
     '<div class="btns"><button class="btn ok" id="tr-x" onclick="expTri()">Exportar TRI Excel</button><button class="btn sec" id="tr-c" onclick="expTriCSV()">CSV</button></div>'+
+    '<button class="btn full sec" style="margin-top:8px" onclick="salidaDesdeTri()">&#x1F4E4; Pasar esta lista a Salida (venta)</button>'+
     '<p class="muted" style="margin-top:10px">Los animales que ya están en el stock se completan solos con sexo, raza y fecha de nacimiento.</p>';
   tbTri();foco('tr-eid');
 }
@@ -705,10 +708,11 @@ function rSalida(){
     '<div class="field"><label>Destino</label><input id="sa-dest" value="'+esc(D.dest)+'" oninput="DB.dSal.dest=this.value;guardar()"></div></div></div>'+
     '<div class="card"><h3>Animal</h3>'+idHTML('sa','','',' onkeydown="if(event.key===\'Enter\'){event.preventDefault();salBuscar(true)}" onchange="salBuscar()"',' onkeydown="if(event.key===\'Enter\'){event.preventDefault();salBuscar(true)}" onchange="salBuscar()"')+
     '<div id="sa-info"></div><div class="grid2"><div class="field"><label>Peso de salida (kg)</label><input type="number" id="sa-peso" inputmode="decimal" onkeydown="if(event.key===\'Enter\'){event.preventDefault();addSalida()}"></div><div class="field"><label>Observaciones</label><input id="sa-obs"></div></div>'+
-    '<button class="btn full" onclick="addSalida()">+ Agregar a la salida</button></div>'+
+    '<div class="btns"><button class="btn" onclick="addSalida()">+ Agregar a la salida</button><button class="btn sec" onclick="elegirSalida()">&#9776; Elegir del stock</button></div></div>'+
     '<div class="th"><h2>Animales de esta salida (<span id="sa-n">0</span>)</h2></div>'+
     '<div class="tw"><table><thead><tr><th>IDV</th><th>EID</th><th>S</th><th>Cat.</th><th>1er peso</th><th>Peso S.</th><th>Días</th><th>GDP</th><th></th></tr></thead><tbody id="sa-tb"></tbody></table></div>'+
-    '<button class="btn full ok" id="sa-fin" onclick="finSalida()">&#10003; Finalizar venta — descontar del stock y generar Excel</button>';
+    '<button class="btn full ok" id="sa-fin" onclick="finSalida()">&#10003; Finalizar venta — descontar del stock y generar Excel</button>'+
+    '<button class="btn full sec" style="margin-top:8px" onclick="triDesdeSalida()">&#x1F4CB; Generar lista TRI con estos animales</button>';
   tbSalida();foco('sa-eid');
 }
 function salBuscar(focoPeso){
@@ -731,15 +735,15 @@ function addSalida(){
   if(!a){toast('No está en el stock',1);return;}
   if(DB.dSal.items.some(function(x){return x.aid===a.id;})){toast('Ya está en esta salida',1);return;}
   var peso=num($('sa-peso').value);if(peso!==''&&(peso<20||peso>1500)){toast('Revisá el peso',1);return;}
-  DB.dSal.items.push({aid:a.id,peso:peso,obs:$('sa-obs').value.trim()});guardar();
-  ['sa-eid','sa-idv','sa-peso','sa-obs'].forEach(function(i){$(i).value='';});$('sa-info').innerHTML='';tbSalida();foco('sa-eid');toast('Agregado');
+  DB.dSal.items.push({aid:a.id,peso:peso,obs:$('sa-obs').value.trim()});var nc=ofrecerCrias([a.id]);guardar();
+  ['sa-eid','sa-idv','sa-peso','sa-obs'].forEach(function(i){$(i).value='';});$('sa-info').innerHTML='';tbSalida();foco('sa-eid');toast(nc?'Agregada con su cría':'Agregado');
 }
 function tbSalida(){
   var L=DB.dSal.items,f=DB.dSal.fecha||hoyISO();$('sa-n').textContent=L.length;$('sa-fin').disabled=!L.length;
   $('sa-tb').innerHTML=L.length?L.map(function(x,i){var a=DB.anim[x.aid]||{},c=calcSalida(x.aid,f,x.peso);
-    return '<tr><td class="idv">'+esc(a.idv||'-')+'</td><td class="eid">'+esc(a.eid||'-')+'</td><td>'+tagSexo(a.sexo)+'</td><td>'+esc(a.cat||'-')+'</td><td class="num">'+(c.pr?fmt(c.pr.peso,0):'-')+'</td><td class="num">'+(x.peso!==''?fmt(x.peso,0):'-')+'</td><td class="num">'+(c.dias||'-')+'</td><td class="num '+gdpClase(c.gdp,a.cat)+'">'+(c.gdp!==''?fmt(c.gdp,3):'-')+'</td>'+
+    return '<tr><td class="idv">'+esc(a.idv||nombreA(a))+'</td><td class="eid">'+esc(a.eid||'-')+'</td><td>'+tagSexo(a.sexo)+'</td><td>'+esc(a.cat||'-')+'</td><td class="num">'+(c.pr?fmt(c.pr.peso,0):'-')+'</td><td><input inputmode="decimal" value="'+(x.peso!==''?x.peso:'')+'" placeholder="kg" style="width:70px;padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--input);color:var(--text);font-family:var(--mono);text-align:right" onchange="salPeso('+i+',this.value)"></td><td class="num">'+(c.dias||'-')+'</td><td class="num '+gdpClase(c.gdp,a.cat)+'">'+(c.gdp!==''?fmt(c.gdp,3):'-')+'</td>'+
       '<td><button class="ib del" onclick="DB.dSal.items.splice('+i+',1);guardar();tbSalida()">&#10005;</button></td></tr>';}).join('')
-    :'<tr><td colspan="9"><div class="es">Escaneá los animales que salen.</div></td></tr>';
+    :'<tr><td colspan="9"><div class="es">Escaneá los animales que salen o tocá "Elegir del stock".</div></td></tr>';
 }
 function finSalida(){
   var D=DB.dSal;if(!D.items.length)return;
@@ -782,6 +786,7 @@ function regMuerte(){
   if(!confirm('Registrar la muerte de '+nombreA(a)+'?\nMotivo: '+mot+'\n\nSe descuenta del STOCK.'))return;
   DB.muertes.unshift({id:nuevoId('D'),aid:a.id,eid:a.eid,idv:a.idv,sexo:a.sexo,cat:a.cat,raza:a.raza,motivo:mot,obs:$('mu-obs').value.trim(),fecha:fecha,hora:ahoraHM()});
   a.estado='muerto';a.fechaBaja=fecha;DB.tri=DB.tri.filter(function(t){return t.aid!==a.id;});guardar();
+  var hu=criasPie(a.id);if(hu.length)setTimeout(function(){alert(nombreA(a)+' tenía '+(hu.length===1?'una cría al pie ('+nombreA(hu[0])+')':hu.length+' crías al pie')+'.\nQuedó sin madre: registrá su destete o asignale nodriza.');},300);
   ['mu-eid','mu-idv','mu-obs'].forEach(function(i){$(i).value='';});$('mu-mot').value='';$('mu-info').innerHTML='';tbMuertes();foco('mu-eid');toast('Muerte registrada');
 }
 function tbMuertes(){
@@ -815,7 +820,7 @@ function rStock(){
     '<div class="field" style="margin:0"><label>Estado</label><select onchange="STF.estado=this.value;tbStock()">'+opts([['stock','En stock'],['vendido','Vendidos'],['muerto','Muertos'],['todos','Todos']],STF.estado)+'</select></div></div></div>'+
     '<div id="st-filtro"></div><div class="th"><h2>Animales (<span id="st-n">0</span>)</h2><span class="muted">Tocá un animal para ver su ficha</span></div>'+
     '<div class="tw"><table><thead><tr><th>IDV</th><th>EID</th><th>S</th><th>Cat.</th><th>Raza</th><th>Edad</th><th>Últ. manga</th><th>Últ. peso</th><th>CC</th><th>Preñez</th><th>Últ. tratamiento</th></tr></thead><tbody id="st-tb"></tbody></table></div>'+
-    '<div class="btns"><button class="btn ok" onclick="expStock()">Exportar Excel (vista actual)</button></div>';
+    '<div class="btns"><button class="btn ok" onclick="expStock()">Exportar Excel (vista actual)</button><button class="btn sec" onclick="asistenteCat()">Actualizar categorías'+(function(){var n=sugerenciasCat().length;return n?' ('+n+')':'';})()+'</button></div>';
   tbStock();
 }
 function filtStock(){
@@ -838,7 +843,7 @@ function tbStock(){
   var f=[];if(STF.cat)f.push(STF.cat);if(STF.sexo)f.push(STF.sexo==='H'?'hembras':'machos');if(STF.estado!=='stock')f.push(STF.estado==='todos'?'todos los estados':STF.estado+'s');if(STF.q)f.push('"'+STF.q+'"');
   $('st-filtro').innerHTML=f.length?'<div class="aviso info">Filtrando: <b>'+esc(f.join(' · '))+'</b> — <a href="#" onclick="irStock();return false" style="color:var(--accent);font-weight:700">ver todos</a></div>':'';
   $('st-tb').innerHTML=L.length?L.map(function(a){var P=pesadas(a.id),up=P[P.length-1],uc=ultimo(a.id,'cc'),upr=ultimo(a.id,'pre'),um=ultReg(a.id),ut=ultReg(a.id,'trat');
-    return '<tr class="click" onclick="ficha(\''+a.id+'\')"><td class="idv">'+esc(a.idv||'-')+'</td><td class="eid">'+esc(a.eid||'-')+'</td><td>'+tagSexo(a.sexo)+'</td><td>'+esc(a.cat||'-')+'</td><td>'+esc(a.raza||'-')+'</td><td>'+(edadTxt(a.fnac)||'-')+'</td>'+
+    return '<tr class="click" onclick="ficha(\''+a.id+'\')"><td class="idv">'+esc(a.idv||(a.eid?'-':nombreA(a)))+'</td><td class="eid">'+esc(a.eid||'-')+'</td><td>'+tagSexo(a.sexo)+'</td><td>'+esc(a.cat||'-')+'</td><td>'+esc(a.raza||'-')+'</td><td>'+(edadTxt(a.fnac)||'-')+'</td>'+
       '<td>'+(um?isoAR(um.fecha):'-')+'</td><td class="num">'+(up?fmt(up.peso,0)+(up.fecha!==(um||{}).fecha?' <span class="muted">('+isoAR(up.fecha).slice(0,5)+')</span>':''):'-')+'</td><td class="num">'+(uc?uc.cc:'-')+'</td><td>'+(upr?esc(upr.pre):'-')+'</td>'+
       '<td style="white-space:normal;min-width:130px">'+(ut?esc(ut.trat)+(ut!==um?' <span class="muted">('+isoAR(ut.fecha).slice(0,5)+')</span>':''):'-')+'</td></tr>';}).join('')
     :'<tr><td colspan="11"><div class="es">No hay animales con ese filtro.</div></td></tr>';
@@ -1369,9 +1374,9 @@ function rDescarte(){
     '<div class="tw"><table><thead><tr><th>IDV</th><th>Cat.</th><th>Edad</th><th>Prioridad</th><th style="min-width:150px">Motivos</th><th></th></tr></thead><tbody>'+
     (L.length?L.map(function(x){var a=x.a,pr=prioridad(x.s);
       return '<tr><td class="idv" style="cursor:pointer" onclick="ficha(\''+a.id+'\')">'+esc(nombreA(a))+'</td><td>'+esc(a.cat)+'</td><td>'+(edadTxt(a.fnac)||'-')+'</td><td class="'+pr[1]+'">'+pr[0]+'</td><td style="white-space:normal">'+x.m.map(function(y){return esc(y[1]);}).join('<br>')+'</td>'+
-        '<td style="white-space:nowrap">'+(a.cat!=='Vaca CUT'?'<button class="mini" onclick="aCUT(\''+a.id+'\')">→ CUT</button> ':'')+'<button class="mini" onclick="aTRI(\''+a.id+'\')">+ TRI</button></td></tr>';}).join('')
+        '<td style="white-space:nowrap">'+(a.cat!=='Vaca CUT'?'<button class="mini" onclick="aCUT(\''+a.id+'\')">→ CUT</button> ':'')+'<button class="mini" onclick="aSalida(\''+a.id+'\')">→ Salida</button></td></tr>';}).join('')
     :'<tr><td colspan="6"><div class="es">No hay vientres con motivos de descarte. Se van a ir marcando a medida que cargues tactos, partos y destetes.</div></td></tr>')+'</tbody></table></div>'+
-    '<div class="btns"><button class="btn ok" onclick="expDescarte()">Exportar Excel</button>'+(altas.length?'<button class="btn warn" onclick="altasATRI()">Prioridad alta → lista TRI</button>':'')+'</div>';
+    '<div class="btns"><button class="btn ok" onclick="expDescarte()">Exportar Excel</button>'+(altas.length?'<button class="btn warn" onclick="altasASalida()">Prioridad alta → Salida</button>':'')+'</div>';
 }
 function aCUT(id){var a=DB.anim[id];a.cat='Vaca CUT';guardar();toast(nombreA(a)+' pasó a Vaca CUT');rDescarte();}
 function aTRI(id){if(DB.tri.some(function(t){return t.aid===id;})){toast('Ya está en la lista TRI',1);return;}DB.tri.push({aid:id});guardar();toast('Agregada a la lista TRI');}
@@ -1549,6 +1554,151 @@ function expEquinos(){
   var aoa=cabecera('EQUINOS',equinosStock().length).concat([['Nombre','Chip','Categoría','Sexo','Pelaje','F. nac.','Edad','EV','Estado','Fecha baja','Observaciones']]);
   L.forEach(function(a){aoa.push([a.nombre||'',a.eid||'',a.cat||'',a.sexo||'',a.pelaje||'',a.fnac||'',edadTxt(a.fnac),evDe(a),estadoTxt(a)==='baja'?'Baja':estadoTxt(a),isoAR(a.fechaBaja),[a.obs,a.motivoBaja].filter(Boolean).join(' · ')]);});
   xlsx(nombreArch('equinos','xlsx'),'Equinos',aoa,[16,18,16,6,12,11,7,6,10,11,28]);toast('Excel exportado');
+}
+
+/* ================= ELEGIR ANIMALES DEL STOCK ================= */
+var PK={cat:'',q:'',sel:{}};
+function pkLista(modo){
+  var q=PK.q.trim().toLowerCase(),usados={};
+  if(modo==='salida')DB.dSal.items.forEach(function(x){usados[x.aid]=1;});
+  return enStock().filter(function(a){
+    if(usados[a.id])return false;
+    if(modo==='alta'&&a.eid)return false;
+    if(PK.cat&&(a.cat||'Sin categoría')!==PK.cat)return false;
+    if(q&&String(a.idv).toLowerCase().indexOf(q)<0&&String(a.eid).toLowerCase().indexOf(q)<0&&nombreA(a).toLowerCase().indexOf(q)<0)return false;
+    return true;
+  }).sort(function(x,y){return (+normIDV(x.idv)||1e9)-(+normIDV(y.idv)||1e9)||nombreA(x).localeCompare(nombreA(y));});
+}
+/* ---- Salida: marcar varios ---- */
+function elegirSalida(){PK={cat:'',q:'',sel:{}};pintarPkSalida();}
+function pintarPkSalida(){
+  var cats={};enStock().forEach(function(a){var c=a.cat||'Sin categoría';cats[c]=(cats[c]||0)+1;});
+  var L=pkLista('salida'),n=Object.keys(PK.sel).length;
+  modal('<h3>Elegir animales del stock</h3><div class="grid2">'+
+    '<div class="field"><label>Categoría</label><select onchange="PK.cat=this.value;pintarPkSalida()">'+opts(CATS.H.concat(CATS.M).concat(['Sin categoría']).filter(function(c){return cats[c];}).map(function(c){return [c,c+' ('+cats[c]+')'];}),PK.cat,'Todas')+'</select></div>'+
+    '<div class="field"><label>Buscar</label><input id="pk-q" value="'+esc(PK.q)+'" placeholder="IDV o EID" oninput="PK.q=this.value;clearTimeout(pintarPkSalida.t);pintarPkSalida.t=setTimeout(function(){pintarPkSalida();var e=$(\'pk-q\');e.focus();e.setSelectionRange(e.value.length,e.value.length);},250)"></div></div>'+
+    '<div class="btns" style="margin-bottom:8px"><button class="btn sec" onclick="pkTodos(true)">Marcar todos ('+L.length+')</button><button class="btn sec" onclick="pkTodos(false)">Desmarcar</button></div>'+
+    '<div class="tw" style="max-height:48vh;overflow:auto"><table><thead><tr><th></th><th>IDV</th><th>Cat.</th><th>Raza</th><th>Edad</th><th style="text-align:right">Últ. peso</th></tr></thead><tbody>'+
+    (L.length?L.map(function(a){var P=pesadas(a.id),up=P[P.length-1];return '<tr class="click" onclick="pkTog(\''+a.id+'\')"><td><input type="checkbox" '+(PK.sel[a.id]?'checked':'')+' style="width:20px;height:20px;pointer-events:none"></td><td class="idv">'+esc(nombreA(a))+'</td><td>'+esc(a.cat||'-')+'</td><td>'+esc(a.raza||'-')+'</td><td>'+(edadTxt(a.fnac)||'-')+'</td><td class="num">'+(up?fmt(up.peso,0):'-')+'</td></tr>';}).join('')
+      :'<tr><td colspan="6"><div class="es">No hay animales con ese filtro.</div></td></tr>')+'</tbody></table></div>'+
+    '<div class="btns"><button class="btn ok" '+(n?'':'disabled')+' onclick="pkAgregarSalida()">Agregar '+n+' a la salida</button><button class="btn sec" onclick="cerrarModal()">Cancelar</button></div>');
+}
+function pkTog(id){if(PK.sel[id])delete PK.sel[id];else PK.sel[id]=1;pintarPkSalida();}
+function pkTodos(on){pkLista('salida').forEach(function(a){if(on)PK.sel[a.id]=1;else delete PK.sel[a.id];});if(!on)PK.sel={};pintarPkSalida();}
+function pkAgregarSalida(){
+  var ids=Object.keys(PK.sel).filter(function(id){return DB.anim[id]&&DB.anim[id].estado==='stock'&&!DB.dSal.items.some(function(x){return x.aid===id;});});
+  ids.forEach(function(id){DB.dSal.items.push({aid:id,peso:'',obs:''});});
+  cerrarModal();var nc=ofrecerCrias(ids);guardar();tbSalida();toast(ids.length+' animales agregados'+(nc?' + '+nc+' crías':'')+'. Podés cargar el peso en la tabla.');
+}
+function salPeso(i,v){var p=num(v);if(p!==''&&(p<20||p>1500)){toast('Revisá el peso',1);tbSalida();return;}DB.dSal.items[i].peso=p;guardar();tbSalida();}
+/* ---- Alta SIGSA: animales del stock sin caravana ---- */
+function elegirAlta(){PK={cat:'',q:'',sel:{}};pintarPkAlta();}
+function pintarPkAlta(){
+  var L=pkLista('alta');
+  modal('<h3>Animales del stock sin caravana</h3><p class="muted" style="margin-bottom:10px">Por ejemplo, terneros cargados en Parición. Escaneá o escribí la caravana de cada uno y tocá Enter: pasa al lote de Alta SIGSA.</p>'+
+    '<div class="tw" style="max-height:55vh;overflow:auto"><table><thead><tr><th>Animal</th><th>S</th><th>Raza</th><th>Nac.</th><th style="min-width:170px">Caravana EID</th></tr></thead><tbody>'+
+    (L.length?L.map(function(a){return '<tr><td class="idv">'+esc(nombreA(a))+'</td><td>'+tagSexo(a.sexo)+'</td><td>'+esc(a.raza||'-')+'</td><td>'+esc(a.fnac||'-')+'</td>'+
+      '<td><input id="pka-'+a.id+'" class="eid" style="width:100%;padding:7px;border:1px solid var(--accent);border-radius:6px;background:var(--input)" placeholder="Escaneá..." onkeydown="if(event.key===\'Enter\'){event.preventDefault();pkAsignarEID(\''+a.id+'\')}" onchange="pkAsignarEID(\''+a.id+'\')"></td></tr>';}).join('')
+      :'<tr><td colspan="5"><div class="es">Todos los animales en stock ya tienen caravana.</div></td></tr>')+'</tbody></table></div>'+
+    '<button class="btn sec full" onclick="cerrarModal();tbAlta()">Listo</button>');
+  if(L.length)foco('pka-'+L[0].id);
+}
+function pkAsignarEID(id){
+  var inp=$('pka-'+id);if(!inp)return;var eid=normEID(inp.value);if(!eid)return;
+  var ex=existeEID(eid,id);if(ex){toast('Esa caravana ya existe ('+(ex.especie==='equino'?'equino':nombreA(ex))+')',1);inp.select();return;}
+  var a=DB.anim[id];a.eid=eid;if(!a.idv)a.idv=idvDeEID(eid);a.alta={fecha:hoyISO(),hora:ahoraHM()};
+  if(DB.altaLote.indexOf(id)<0)DB.altaLote.push(id);
+  guardar();toast(nombreA(a)+' con caravana · al lote SIGSA');
+  var L=pkLista('alta');pintarPkAlta();if(L.length)foco('pka-'+L[0].id);
+}
+
+/* ================= VÍNCULOS ENTRE MÓDULOS ================= */
+
+/* ---------- 1. Actualizar categorías ---------- */
+function umbrales(){var u=DB.cfg.catUmbral||{};return {r1:u.r1||8,r2:u.r2||15,nov:u.nov||24,toro:u.toro||24};}
+function edadMeses(a){var iso=arISO(a.fnac);if(!iso)return null;var n=new Date(iso+'T12:00:00'),h=new Date();var m=(h.getFullYear()-n.getFullYear())*12+(h.getMonth()-n.getMonth());if(h.getDate()<n.getDate())m--;return m;}
+function alPie(a){if(!a.madre||a.destete)return false;var m=DB.anim[a.madre];return !!(m&&m.estado==='stock');}
+function sugerenciasCat(){
+  var U=umbrales(),L=[];
+  enStock().forEach(function(a){
+    var e=edadMeses(a),c=a.cat,s=null,r='';
+    var pario=partosDe(a.id).some(function(p){return p.estado!=='Aborto';});
+    if(c==='Ternera'||c==='Ternero'){
+      if(a.destete){s=c==='Ternera'?'Vaquillona R1':'Novillito';r='destetad'+(c==='Ternera'?'a':'o')+' el '+isoAR(a.destete.fecha);}
+      else if(e!==null&&e>=U.r1&&!alPie(a)){s=c==='Ternera'?'Vaquillona R1':'Novillito';r=e+' meses'+(a.madre?' (la madre ya no está en el campo)':'');}
+    }
+    else if((c==='Vaquillona R1'||c==='Vaquillona R2')&&pario){s='Vaca';r='ya parió';}
+    else if(c==='Vaquillona R1'&&e!==null&&e>=U.r2){s='Vaquillona R2';r=e+' meses';}
+    else if(c==='Novillito'&&e!==null&&e>=U.nov){s='Novillo';r=e+' meses';}
+    else if(c==='Torito'&&e!==null&&e>=U.toro){s='Toro';r=e+' meses';}
+    else if(!c&&a.sexo&&e!==null){
+      if(a.sexo==='H')s=pario?'Vaca':e<U.r1?'Ternera':e<U.r2?'Vaquillona R1':'Vaquillona R2';
+      else s=e<U.r1?'Ternero':e<U.nov?'Novillito':'Novillo';
+      r='sin categoría · '+e+' meses';
+    }
+    if(s&&s!==c)L.push({a:a,de:c||'—',a2:s,r:r});
+  });
+  return L;
+}
+var CAT_SEL={};
+function asistenteCat(){CAT_SEL={};sugerenciasCat().forEach(function(x){CAT_SEL[x.a.id]=x.a2;});pintarAsistCat();}
+function pintarAsistCat(){
+  var U=umbrales(),L=sugerenciasCat(),n=L.filter(function(x){return CAT_SEL[x.a.id];}).length;
+  var inp=function(k,lab){return '<div class="field" style="margin:0"><label>'+lab+'</label><input inputmode="numeric" value="'+U[k]+'" style="text-align:center" onchange="var v=parseInt(this.value,10);if(v>0&&v<120){DB.cfg.catUmbral=Object.assign(umbrales(),{'+k+':v});guardar();}asistenteCat()"></div>';};
+  modal('<h3>Actualizar categorías</h3>'+
+    '<p class="muted" style="margin-bottom:8px">Sugerencias según destete, partos y edad. Revisá, cambiá el destino si hace falta y aplicá.</p>'+
+    '<div class="grid2" style="margin-bottom:10px">'+inp('r1','Ternero/a → recría (meses)')+inp('r2','Vaq. R1 → R2 (meses)')+inp('nov','Novillito → Novillo (meses)')+inp('toro','Torito → Toro (meses)')+'</div>'+
+    '<div class="tw" style="max-height:50vh;overflow:auto"><table><thead><tr><th></th><th>Animal</th><th>Actual / motivo</th><th>Pasa a</th></tr></thead><tbody>'+
+    (L.length?L.map(function(x){var a=x.a,on=!!CAT_SEL[a.id];
+      return '<tr><td><input type="checkbox" '+(on?'checked':'')+' style="width:20px;height:20px" onchange="if(this.checked)CAT_SEL[\''+a.id+'\']=$(\'cs-'+a.id+'\').value;else delete CAT_SEL[\''+a.id+'\'];pintarAsistCatN()"></td>'+
+        '<td class="idv" style="cursor:pointer" onclick="ficha(\''+a.id+'\')">'+esc(nombreA(a))+'</td><td style="white-space:normal">'+esc(x.de)+'<br><span class="muted">'+esc(x.r)+'</span></td>'+
+        '<td><select id="cs-'+a.id+'" style="padding:6px;border:1px solid var(--border);border-radius:6px;background:var(--input);color:var(--text);max-width:130px" onchange="if(CAT_SEL[\''+a.id+'\'])CAT_SEL[\''+a.id+'\']=this.value">'+opts(CATS[a.sexo]||[],CAT_SEL[a.id]||x.a2)+'</select></td></tr>';}).join('')
+      :'<tr><td colspan="4"><div class="es">Todas las categorías están al día.</div></td></tr>')+'</tbody></table></div>'+
+    '<div class="btns"><button class="btn ok" id="cs-ok" '+(n?'':'disabled')+' onclick="aplicarCat()">Aplicar '+n+' cambios</button><button class="btn sec" onclick="cerrarModal();refrescar()">Cerrar</button></div>');
+}
+function pintarAsistCatN(){var n=Object.keys(CAT_SEL).length,b=$('cs-ok');if(b){b.disabled=!n;b.textContent='Aplicar '+n+' cambios';}}
+function aplicarCat(){
+  var n=0;Object.keys(CAT_SEL).forEach(function(id){var a=DB.anim[id],c=CAT_SEL[id];if(a&&c&&(CATS[a.sexo]||[]).indexOf(c)>=0&&a.cat!==c){a.cat=c;n++;}});
+  guardar();cerrarModal();toast(n+' categorías actualizadas');refrescar();
+}
+
+/* ---------- 2. Circuito de venta ---------- */
+function criasPie(mid){return enStock().filter(function(t){return t.madre===mid&&!t.destete&&(t.cat==='Ternero'||t.cat==='Ternera'||!t.cat);});}
+function ofrecerCrias(aids){
+  var cr=[];aids.forEach(function(id){criasPie(id).forEach(function(t){if(!DB.dSal.items.some(function(x){return x.aid===t.id;})&&aids.indexOf(t.id)<0&&cr.indexOf(t)<0)cr.push(t);});});
+  if(!cr.length)return 0;
+  var txt=cr.length===1?'La vaca '+nombreA(DB.anim[cr[0].madre])+' tiene una cría al pie ('+(cr[0].sexo==='M'?'ternero':'ternera')+').\n¿Sale con su cría?'
+    :cr.length+' de las vacas tienen cría al pie.\n¿Agregar las '+cr.length+' crías a la salida?';
+  if(!confirm(txt))return 0;
+  cr.forEach(function(t){DB.dSal.items.push({aid:t.id,peso:'',obs:'Cría de '+nombreA(DB.anim[t.madre])});});
+  return cr.length;
+}
+function aSalidaIds(ids){
+  var nuevos=ids.filter(function(id){var a=DB.anim[id];return a&&a.estado==='stock'&&!DB.dSal.items.some(function(x){return x.aid===id;});});
+  nuevos.forEach(function(id){DB.dSal.items.push({aid:id,peso:'',obs:''});});
+  var c=ofrecerCrias(nuevos);guardar();return {n:nuevos.length,crias:c};
+}
+function aSalida(id){var r=aSalidaIds([id]);toast(r.n?'Agregada a la salida'+(r.crias?' con su cría':''):'Ya estaba en la salida',!r.n);}
+function altasASalida(){var ids=listaDescarte().filter(function(x){return x.s>=3;}).map(function(x){return x.a.id;});var r=aSalidaIds(ids);toast(r.n+' vacas agregadas a la salida'+(r.crias?' + '+r.crias+' crías':''));}
+function triDesdeSalida(){
+  if(!DB.dSal.items.length){toast('La salida está vacía',1);return;}
+  if(DB.tri.length&&!confirm('La lista TRI ya tiene '+DB.tri.length+' animales. ¿Reemplazarla por los '+DB.dSal.items.length+' de esta salida?'))return;
+  DB.tri=DB.dSal.items.map(function(x){return {aid:x.aid};});guardar();ir('tri');toast('Lista TRI generada desde la salida');
+}
+function salidaDesdeTri(){
+  var ids=DB.tri.filter(function(t){return t.aid;}).map(function(t){return t.aid;}),sin=DB.tri.length-ids.length;
+  if(!ids.length){toast('No hay animales del stock en la lista',1);return;}
+  var r=aSalidaIds(ids);ir('salida');
+  toast(r.n+' animales pasados a la salida'+(sin?' ('+sin+' sin ficha en stock no se pasaron)':''),!!sin);
+}
+
+/* ---------- 3. Crías sin madre ---------- */
+function huerfanos(){return enStock().filter(function(a){if((a.cat!=='Ternero'&&a.cat!=='Ternera')||a.destete||!a.madre)return false;var m=DB.anim[a.madre];return m&&m.estado!=='stock';});}
+function avisoHuerfanos(){
+  var H=huerfanos();if(!H.length)return '';
+  return '<div class="aviso warn">'+(H.length===1?'Hay <b>1 cría</b>':'Hay <b>'+H.length+' crías</b>')+' en el campo cuya madre ya no está (vendida o muerta): '+
+    H.slice(0,6).map(function(t){return '<a href="#" onclick="ficha(\''+t.id+'\');return false" style="color:inherit;font-weight:700">'+esc(nombreA(t))+'</a>';}).join(', ')+(H.length>6?'…':'')+
+    '. Registrá su destete o asignales nodriza. <a href="#" onclick="CT=\'destete\';ir(\'cria\');return false" style="color:inherit;font-weight:700">Ir a Destete</a></div>';
 }
 
 /* ================= TEMA E INICIO ================= */
