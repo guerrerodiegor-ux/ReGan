@@ -1,7 +1,7 @@
 /* Registro Ganadero — service worker
    Con señal: carga siempre la última versión publicada.
    Sin señal: abre la copia guardada en el celular. */
-const VERSION = 'rg-2026-10-07-8';
+const VERSION = 'rg-2026-10-09-9';
 const ARCHIVOS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

@@ -54,6 +54,7 @@ input.idv{font-family:var(--mono);font-size:16px;font-weight:700;color:var(--acc
 .btn{border:none;border-radius:8px;padding:12px 14px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;background:var(--accent);}
 .btn.full{width:100%;}
 .btn.ok{background:#1e7e45;}.btn.warn{background:#c47f12;}.btn.danger{background:var(--danger);}
+.btn.wa{background:#1fa855;}
 .btn.sec{background:var(--surface2);color:var(--text);border:1px solid var(--border);font-weight:600;}
 .btn:disabled{opacity:.35;cursor:not-allowed;}
 .btns{display:flex;gap:8px;flex-wrap:wrap;}.btns .btn{flex:1;min-width:130px;}
@@ -145,7 +146,7 @@ td.num{font-family:var(--mono);text-align:right;}
 </main>
 <div class="modal-bg" id="modal" onclick="if(event.target===this)cerrarModal()"><div class="modal" id="modal-body"></div></div>
 <div class="toast" id="toast"></div>
-<input type="file" id="file-restore" accept=".json,application/json" style="display:none" onchange="restaurarArchivo(this)">
+<input type="file" id="file-restore" accept=".json,.txt,application/json,text/plain" style="display:none" onchange="restaurarArchivo(this)">
 <script>
 'use strict';
 /* ================= CONSTANTES ================= */
@@ -172,7 +173,8 @@ function cargar(){
   try{var s=localStorage.getItem(KEY);var d=s?JSON.parse(s):null;DB=nuevaDB();if(d){for(var k in d)DB[k]=d[k];}}
   catch(e){DB=nuevaDB();}
 }
-function guardar(){
+function guardar(sinMarca){
+  if(!sinMarca)DB.modificado=new Date().toISOString();
   try{localStorage.setItem(KEY,JSON.stringify(DB));return true;}
   catch(e){toast('No se pudo guardar (memoria llena). Descargá un respaldo.',1);return false;}
 }
@@ -380,7 +382,7 @@ function rInicio(){
   if(!DB.cfg.titular||!DB.cfg.estab)aviso+='<div class="aviso info">Completá el nombre del establecimiento y el titular en <a href="#" onclick="ir(\'config\');return false" style="color:var(--accent)">Configuración</a>. Salen en todos los Excel.</div>';
   if(animales().length){
     var dd=DB.lastBackup?dias(DB.lastBackup,hoyISO()):null;
-    if(dd===null||dd>=15)aviso+='<div class="aviso warn">'+(dd===null?'Todavía no descargaste ningún respaldo.':'Último respaldo hace '+dd+' días.')+' Los datos viven solo en este dispositivo: <a href="#" onclick="descargarRespaldo();return false" style="color:inherit;font-weight:700">descargar respaldo ahora</a>.</div>';
+    if(dd===null||dd>=15)aviso+='<div class="aviso warn">'+(dd===null?'Todavía no descargaste ningún respaldo.':'Último respaldo hace '+dd+' días.')+' Los datos viven solo en este dispositivo: <a href="#" onclick="compartirRespaldo();return false" style="color:inherit;font-weight:700">hacer respaldo ahora</a>.</div>';
   }
   var pend='';
   if(DB.dEnt.items.length)pend+='<div class="aviso info">Hay una <b>entrada</b> sin finalizar ('+DB.dEnt.items.length+' animales). <a href="#" onclick="ir(\'entrada\');return false" style="color:var(--accent)">Continuar</a></div>';
@@ -931,27 +933,52 @@ function rConfig(){
     '<div class="field"><label>RENSPA</label><input id="cf-ren" value="'+esc(DB.cfg.renspa)+'" style="font-family:var(--mono)"></div></div>'+
     '<button class="btn full" onclick="guardarCfg()">Guardar datos</button></div>'+
     '<div class="card"><h3>Respaldo</h3><p class="muted" style="margin-bottom:10px">Los datos se guardan solo en este dispositivo y navegador. Descargá un respaldo seguido y guardalo en Drive o mandalo por WhatsApp. Con ese archivo recuperás todo en cualquier celular o computadora.<br>'+
-    (DB.lastBackup?'Último respaldo: <b>'+isoAR(DB.lastBackup)+'</b>':'<b style="color:var(--warn)">Todavía no hay respaldos.</b>')+'</p>'+
-    '<div class="btns"><button class="btn ok" onclick="descargarRespaldo()">Descargar respaldo</button><button class="btn sec" onclick="$(\'file-restore\').click()">Restaurar desde archivo</button></div></div>'+
+    'Último cambio en este dispositivo: <b>'+(fechaHora(DB.modificado)||'-')+'</b><br>'+
+    (DB.lastBackup?'Último respaldo: <b>'+(fechaHora(DB.lastBackupTs)||isoAR(DB.lastBackup))+'</b>':'<b style="color:var(--warn)">Todavía no hay respaldos.</b>')+
+    (DB.lastBackupTs&&DB.modificado&&DB.modificado>DB.lastBackupTs?'<br><b style="color:var(--warn)">Hay cambios sin respaldar.</b>':'')+'</p>'+
+    '<button class="btn wa full" style="margin-bottom:8px" onclick="compartirRespaldo()">Compartir respaldo (WhatsApp, Drive, mail…)</button>'+
+    '<div class="btns"><button class="btn ok" onclick="descargarRespaldo()">Descargar respaldo</button><button class="btn sec" onclick="$(\'file-restore\').click()">Restaurar desde archivo</button></div>'+
+    '<p class="muted" style="margin-top:10px">Para usar los mismos datos en el celular y la PC: cargá en uno solo a la vez, compartí el respaldo al terminar y restauralo en el otro. Si el respaldo es más viejo que lo que tenés, la app te avisa antes de pisar nada.</p></div>'+
     (viejos.length?'<div class="card"><h3>Datos de las versiones anteriores</h3><p class="muted" style="margin-bottom:10px">Encontré datos de las apps sueltas (Alta, Manga, TRI, Recría) en este navegador: '+esc(viejos.map(function(k){return k.split('_').pop();}).join(', '))+'.'+
       (DB.importados.length?' Ya se importaron una vez.':'')+'</p><button class="btn full warn" onclick="importarViejos()">Importar esos datos</button></div>':'')+
     '<div class="card"><h3>Zona peligrosa</h3><button class="btn danger full" onclick="borrarTodo()">Borrar todos los datos de este dispositivo</button></div>'+
     '<div class="foot">'+animales().length+' animales · '+DB.manga.length+' registros de manga · '+DB.ventas.length+' ventas · '+DB.entradas.length+' compras · '+DB.muertes.length+' muertes</div>';
 }
 function guardarCfg(){DB.cfg.estab=$('cf-estab').value.trim();DB.cfg.titular=$('cf-tit').value.trim();DB.cfg.renspa=$('cf-ren').value.trim()||RENSPA_DEF;guardar();ir('config');toast('Datos guardados');}
+function fechaHora(iso){if(!iso)return '';var d=new Date(iso);return isNaN(d)?'':d.toLocaleString('es-AR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});}
+function armarRespaldo(){
+  if(!DB.modificado)DB.modificado=new Date().toISOString();
+  DB.lastBackup=hoyISO();DB.lastBackupTs=new Date().toISOString();guardar(true);
+  return {base:'respaldo_'+(slug(DB.cfg.estab)||'campo')+'_'+hoyISO().replace(/-/g,'')+'_'+ahoraHM().replace(':',''),txt:JSON.stringify({app:'registro_ganadero',v:1,fecha:new Date().toISOString(),db:DB})};
+}
 function descargarRespaldo(){
-  DB.lastBackup=hoyISO();guardar();
-  descargar('respaldo_'+(slug(DB.cfg.estab)||'campo')+'_'+hoyISO().replace(/-/g,'')+'_'+ahoraHM().replace(':','')+'.json',JSON.stringify({app:'registro_ganadero',v:1,fecha:new Date().toISOString(),db:DB}),'application/json');
+  var r=armarRespaldo();descargar(r.base+'.json',r.txt,'application/json');
   toast('Respaldo descargado');if(PANT==='config'||PANT==='inicio')ir(PANT);
 }
+function compartirRespaldo(){
+  var r=armarRespaldo(),f=null;
+  try{var fj=new File([r.txt],r.base+'.json',{type:'application/json'});var ft=new File([r.txt],r.base+'.txt',{type:'text/plain'});
+    if(navigator.canShare&&navigator.canShare({files:[fj]}))f=fj;else if(navigator.canShare&&navigator.canShare({files:[ft]}))f=ft;}catch(e){}
+  if(!f){descargar(r.base+'.json',r.txt,'application/json');toast('Este navegador no permite compartir: se descargó el archivo');if(PANT==='config'||PANT==='inicio')ir(PANT);return;}
+  navigator.share({files:[f],title:'Respaldo Registro Ganadero',text:'Respaldo de '+(DB.cfg.estab||'mi campo')+' — '+fechaHora(DB.lastBackupTs)})
+    .then(function(){toast('Respaldo compartido');},function(e){if(e&&e.name!=='AbortError')toast('No se pudo compartir',1);})
+    .then(function(){if(PANT==='config'||PANT==='inicio')ir(PANT);});
+}
+function resumenDatos(d){var a=d.anim||{},n=Object.keys(a).filter(function(k){return a[k].estado==='stock';}).length;return n+' en stock, '+(d.manga||[]).length+' registros de manga';}
 function restaurarArchivo(inp){
   var f=inp.files[0];inp.value='';if(!f)return;
   var rd=new FileReader();
   rd.onload=function(){
     try{var o=JSON.parse(rd.result);var d=o&&o.db?o.db:o;if(!d||typeof d.anim!=='object')throw 0;
-      var n=Object.keys(d.anim).length;
-      if(!confirm('Restaurar el respaldo con '+n+' animales'+(o.fecha?' ('+new Date(o.fecha).toLocaleString('es-AR')+')':'')+'?\n\nREEMPLAZA todos los datos actuales de este dispositivo.'))return;
-      DB=nuevaDB();for(var k in d)DB[k]=d[k];guardar();aplicarTema();ir('inicio');toast('Respaldo restaurado: '+n+' animales');
+      var n=Object.keys(d.anim).length,fb=d.modificado||o.fecha||'',fl=DB.modificado||'';
+      var hayLocal=Object.keys(DB.anim).length||DB.manga.length;
+      var msg='RESPALDO: '+resumenDatos(d)+'\nÚltimo cambio: '+(fechaHora(fb)||'sin fecha')+'\n\nESTE DISPOSITIVO: '+resumenDatos(DB)+'\nÚltimo cambio: '+(fechaHora(fl)||'sin datos');
+      if(hayLocal&&fb&&fl&&fl>fb){
+        if(!confirm('⚠️ ATENCIÓN: los datos de este dispositivo son MÁS NUEVOS que el respaldo.\n\n'+msg+'\n\nSi restaurás, se pierde todo lo cargado acá después del '+fechaHora(fb)+'.\n¿Restaurar igual?'))return;
+      } else if(fb&&fl&&fl===fb){
+        if(!confirm('Este dispositivo ya tiene exactamente estos datos.\n\n'+msg+'\n\n¿Restaurar igual?'))return;
+      } else if(!confirm('Restaurar este respaldo?\n\n'+msg+'\n\nREEMPLAZA todos los datos de este dispositivo.'))return;
+      DB=nuevaDB();for(var k in d)DB[k]=d[k];DB.modificado=fb||new Date().toISOString();guardar(true);aplicarTema();ir('inicio');toast('Respaldo restaurado: '+n+' animales');
     }catch(e){toast('El archivo no es un respaldo válido',1);}
   };
   rd.readAsText(f);
